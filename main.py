@@ -1,5 +1,10 @@
+import tkinter as tk
+from tkinter import ttk
 import serial.tools.list_ports
 import time
+
+# Глобальная переменная для доступа к объекту Serial
+serial_port = None
 
 def list_serial_ports():
     """ Возвращает список доступных последовательных портов """
@@ -16,49 +21,95 @@ def generate_message(size):
     message = "test" * (size // 4)  # Повторяем строку 'test' нужное количество раз
     return message.encode('utf-8')  # Преобразуем строку в байты
 
+def send_message(ser, message):
+    """ Отправляет сообщение через COM-порт """
+    ser.write(message)
+    print(f"Sent message: {message.decode('utf-8')}")
+
+def start_sending(ser, message_size, send_interval):
+    """ Начинает циклическую отправку сообщений через COM-порт """
+    try:
+        while True:
+            # Генерируем сообщение
+            message = generate_message(message_size)
+
+            # Отправляем сообщение
+            send_message(ser, message)
+
+            # Ждем указанный интервал перед отправкой следующего сообщения
+            time.sleep(send_interval)
+
+    except KeyboardInterrupt:
+        # При остановке программы (например, Ctrl+C) закрываем порт
+        ser.close()
+        print("\nSerial port closed.")
+
+def stop_sending():
+    """ Останавливает отправку сообщений """
+    global serial_port
+    if serial_port:
+        serial_port.close()
+        print("\nSerial port closed.")
+
+def start_serial_communication(selected_port, baudrate, message_size, send_interval):
+    """ Начинает взаимодействие с выбранным COM-портом """
+    global serial_port
+    ser = serial.Serial(selected_port)
+    set_port_settings(ser, baudrate, 8)  # Размер данных всегда 8 бит (1 байт)
+    print(f"Serial port '{selected_port}' opened with baud rate {baudrate} and data packet size 8 bits.")
+    serial_port = ser  # Сохраняем объект Serial для возможности остановки
+    start_sending(ser, message_size, send_interval)
+
 def main():
+    # Создаем графический интерфейс
+    root = tk.Tk()
+    root.title("Serial Communication")
+
     # Получаем список доступных портов
     ports = list_serial_ports()
     if not ports:
         print("No serial ports found.")
         return
 
-    # Выводим список доступных портов
-    print("Available serial ports:")
-    for i, port in enumerate(ports):
-        print(f"{i + 1}. {port}")
+    # Создаем выпадающий список для выбора порта
+    port_label = ttk.Label(root, text="Select a port:")
+    port_label.pack()
+    port_var = tk.StringVar(root)
+    port_dropdown = ttk.Combobox(root, textvariable=port_var, values=ports)
+    port_dropdown.pack()
 
-    # Запрашиваем у пользователя выбор порта
-    port_index = int(input("Enter port number to use (1 to {}): ".format(len(ports)))) - 1
-    selected_port = ports[port_index]
+    # Поля для ввода параметров порта
+    baudrate_label = ttk.Label(root, text="Enter baud rate:")
+    baudrate_label.pack()
+    baudrate_entry = ttk.Entry(root)
+    baudrate_entry.pack()
 
-    # Устанавливаем параметры порта
-    baudrate = int(input("Enter baud rate (e.g., 9600): "))
-    bytesize = 8  # Устанавливаем размер данных в 8 бит (1 байт)
+    # Поля для ввода параметров сообщения
+    message_size_label = ttk.Label(root, text="Enter message size (bytes):")
+    message_size_label.pack()
+    message_size_entry = ttk.Entry(root)
+    message_size_entry.pack()
 
-    # Открываем выбранный порт
-    ser = serial.Serial(selected_port)
-    set_port_settings(ser, baudrate, bytesize)
+    # Поля для ввода интервала отправки сообщений
+    send_interval_label = ttk.Label(root, text="Enter send interval (seconds):")
+    send_interval_label.pack()
+    send_interval_entry = ttk.Entry(root)
+    send_interval_entry.pack()
 
-    # Выводим информацию о порте
-    print(f"Serial port '{selected_port}' opened with baud rate {baudrate} and data packet size {bytesize} bits.")
+    # Кнопка для запуска взаимодействия
+    start_button = ttk.Button(root, text="Start", command=lambda: start_serial_communication(
+        port_dropdown.get(),
+        int(baudrate_entry.get()),
+        int(message_size_entry.get()),
+        float(send_interval_entry.get())
+    ))
+    start_button.pack()
 
-    try:
-        while True:
-            # Генерируем сообщение размером сколько то байт байта
-            message = generate_message(32)
+    # Кнопка для остановки отправки сообщений
+    stop_button = ttk.Button(root, text="Stop", command=stop_sending)
+    stop_button.pack()
 
-            # Отправляем сообщение
-            ser.write(message)
-            print(f"Sent message: {message.decode('utf-8')}")
-
-            # Ждем 1 секунду перед отправкой следующего сообщения
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        # При остановке программы (например, Ctrl+C) закрываем порт
-        ser.close()
-        print("\nSerial port closed.")
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
